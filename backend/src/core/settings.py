@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     kc_client_id: str = Field(..., alias="KC_CLIENT_ID")
     jwt_leeway_seconds: int = Field(30, alias="JWT_LEEWAY_SECONDS")
     service_name: str = Field("keur-doctor-backend", alias="SERVICE_NAME")
-    allow_origins: list[str] = Field(default_factory=lambda: ["*"], alias="ALLOW_ORIGINS")
+    allow_origins: list[str] | str = Field(default="*", alias="ALLOW_ORIGINS")
     rate_limit_queries_per_min: int = Field(30, alias="RATE_LIMIT_QUERIES_PER_MIN")
     otel_exporter_otlp_endpoint: str | None = Field(
         default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -85,4 +85,3 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Return a cached Settings instance."""
     return Settings()
-

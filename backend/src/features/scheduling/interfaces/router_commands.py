@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...core.db import tenant_session
-from ...core.security import (
+from src.core.db import tenant_session
+from src.core.security import (
     AccessContext,
     ensure_authorized,
     get_access_context,

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
-from ...core.db import tenant_session
-from ...core.http import limiter
-from ...core.security import AccessContext, ensure_authorized, get_access_context
-from ...core.settings import get_settings
+from src.core.db import tenant_session
+from src.core.http import limiter
+from src.core.security import AccessContext, ensure_authorized, get_access_context
+from src.core.settings import get_settings
 from ..application.query_handlers import FetchAvailabilitiesHandler
 from ..application.queries import FetchAvailabilitiesQuery
 from ..infra.repositories import SchedulingRepository
@@ -32,7 +32,8 @@ async def get_repository(
 )
 @limiter.limit(RATE_LIMIT)
 async def list_availabilities(
-    params: AvailabilityQueryParams = Depends(),
+    request: Request,
+    params: AvailabilityQueryParams = Depends(AvailabilityQueryParams),
     context: AccessContext = Depends(get_access_context),
     repository: SchedulingRepository = Depends(get_repository),
 ):

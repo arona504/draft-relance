@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, status
 
-from ....core.security import AccessContext, ensure_authorized, require_any_role
+from src.core.security import AccessContext, ensure_authorized, require_any_role
 
 router = APIRouter(prefix="/commands/dictation", tags=["dictation"])
 

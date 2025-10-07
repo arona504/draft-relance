@@ -18,15 +18,7 @@ _lock = asyncio.Lock()
 
 
 def _seed_policies(enforcer: casbin.Enforcer, policy_path: Path) -> None:
-    """Seed the Casbin policy store if empty."""
-    adapter: Adapter = enforcer.adapter  # type: ignore[assignment]
-    with adapter.session_maker() as session:
-        model = adapter.model_class
-        has_policy = session.query(model).first() is not None
-
-    if has_policy:
-        return
-
+    """Seed the Casbin policy store if the current policy set is empty."""
     with policy_path.open(newline="", encoding="utf-8") as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
@@ -46,15 +38,15 @@ async def _initialise_enforcer(settings: Settings) -> casbin.Enforcer:
     global _enforcer
 
     model_path = settings.resolve_path(settings.casbin_model_path)
-    adapter = Adapter(settings.sync_casbin_db_url, engine_options={"pool_pre_ping": True})
+    adapter = Adapter(settings.sync_casbin_db_url)
     enforcer = casbin.Enforcer(str(model_path), adapter, enable_log=False)
     enforcer.enable_auto_save(True)
 
     policy_path = settings.resolve_path(settings.casbin_policy_path)
-    if policy_path.exists():
+    enforcer.load_policy()
+    if policy_path.exists() and not enforcer.get_policy() and not enforcer.get_grouping_policy():
         _seed_policies(enforcer, policy_path)
 
-    enforcer.load_policy()
     _enforcer = enforcer
     return enforcer
 
@@ -77,4 +69,3 @@ async def authorize(subject_or_role: str, tenant: str, obj: str, act: str) -> bo
     """Run a Casbin enforcement call in a threadpool."""
     enforcer = await get_enforcer()
     return bool(await run_in_threadpool(enforcer.enforce, subject_or_role, tenant, obj, act))
-

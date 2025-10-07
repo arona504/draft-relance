@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Callable
 
 from fastapi import FastAPI, Request
-from slowapi import Limiter
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.cors import CORSMiddleware
@@ -40,8 +41,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 def setup_http(app: FastAPI, settings: Settings) -> None:
     """Configure middlewares for the FastAPI application."""
-    limiter.init_app(app)
+    app.state.limiter = limiter
     app.state.rate_limit_queries_per_min = settings.rate_limit_queries_per_min
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     app.add_middleware(SecurityHeadersMiddleware)
 

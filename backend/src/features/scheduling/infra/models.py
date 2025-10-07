@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ...core.db import Base
+from src.core.db import Base
 from ..domain.value_objects import AppointmentStatus, SlotMode, SlotStatus
 
 
