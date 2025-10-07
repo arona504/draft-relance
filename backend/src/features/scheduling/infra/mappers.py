@@ -7,14 +7,14 @@ import uuid
 from ..domain.entities import Appointment as DomainAppointment
 from ..domain.entities import Slot as DomainSlot
 from ..domain.value_objects import AppointmentStatus, SlotMode, SlotStatus
-from .models import Appointment, Slot
+from .models import AppointmentDB, SlotDB
 
 
 def generate_id() -> str:
     return str(uuid.uuid4())
 
 
-def map_slot(model: Slot) -> DomainSlot:
+def map_slot(model: SlotDB) -> DomainSlot:
     return DomainSlot(
         id=model.id,
         tenant_id=model.tenant_id,
@@ -28,7 +28,7 @@ def map_slot(model: Slot) -> DomainSlot:
     )
 
 
-def map_appointment(model: Appointment) -> DomainAppointment:
+def map_appointment(model: AppointmentDB) -> DomainAppointment:
     return DomainAppointment(
         id=model.id,
         tenant_id=model.tenant_id,
@@ -39,4 +39,3 @@ def map_appointment(model: Appointment) -> DomainAppointment:
         mode=SlotMode(model.mode),
         created_at=model.created_at,
     )
-

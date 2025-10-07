@@ -5,17 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..domain.events import AppointmentBooked
-from .commands import CreateAppointmentCommand
+from .commands import BookAppointmentCommand
 from ..domain.entities import Appointment as DomainAppointment
 from ..domain.value_objects import SlotMode
 from ..infra.repositories import SchedulingRepository, SlotNotAvailableError
 
 
 @dataclass
-class CreateAppointmentHandler:
+class BookAppointmentHandler:
     repository: SchedulingRepository
 
-    async def handle(self, command: CreateAppointmentCommand) -> tuple[DomainAppointment, AppointmentBooked]:
+    async def handle(self, command: BookAppointmentCommand) -> tuple[DomainAppointment, AppointmentBooked]:
         appointment = await self.repository.create_appointment(
             tenant_id=command.tenant_id,
             slot_id=command.slot_id,
@@ -30,4 +30,3 @@ class CreateAppointmentHandler:
             occurred_at=appointment.created_at,
         )
         return appointment, event
-

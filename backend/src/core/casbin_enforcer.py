@@ -9,6 +9,7 @@ from typing import Optional
 
 import casbin
 from casbin_sqlalchemy_adapter import Adapter
+from fastapi.concurrency import run_in_threadpool
 
 from .settings import Settings, get_settings
 
@@ -70,4 +71,10 @@ async def get_enforcer(settings: Settings | None = None) -> casbin.Enforcer:
         if _enforcer:
             return _enforcer
         return await _initialise_enforcer(settings)
+
+
+async def authorize(subject_or_role: str, tenant: str, obj: str, act: str) -> bool:
+    """Run a Casbin enforcement call in a threadpool."""
+    enforcer = await get_enforcer()
+    return bool(await run_in_threadpool(enforcer.enforce, subject_or_role, tenant, obj, act))
 

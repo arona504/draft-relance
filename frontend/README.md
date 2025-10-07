@@ -26,11 +26,12 @@ Edit `.env.local` with the values below:
 - `API_BASE` – BFF target, e.g. `http://localhost:8000`.
 
 ## Keycloak configuration recap
-1. Realm `keur-doctor` with clients `keur-frontend` (public, PKCE) and `keur-backend` (confidential or public).
-2. Enable protocol mappers:
+Run `../scripts/keycloak-setup.sh` while the backend stack is up to provision the realm, clients, mappers, and demo users automatically. Manual steps if needed:
+1. Realm `keur-doctor` with clients `keur-frontend` (public, PKCE) and `keur-backend` (confidential, audience `keur-backend`).
+2. Protocol mappers:
    - User attribute `tenant_id` → token claim `tenant_id`.
-   - Client roles of `keur-backend` included in `resource_access`.
-3. Assign roles (`clinic_admin`, `doctor`, `secretary`, `nurse`, `patient`) to demo users.
+   - Client roles of `keur-backend` exposed in `resource_access.keur-backend.roles`.
+3. Assign roles (`clinic_admin`, `doctor`, `secretary`, `nurse`, `patient`) to demo users with `tenant_id = tenant-0001`.
 4. Set redirect URIs: `http://localhost:3000/*`.
 
 ## BFF proxy

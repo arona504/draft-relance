@@ -8,14 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.db import tenant_session
 from ...core.security import (
-    Principal,
+    AccessContext,
     ensure_authorized,
-    get_current_principal,
+    get_access_context,
     require_any_role,
 )
-from ..application.command_handlers import CreateAppointmentHandler
-from ..application.commands import CreateAppointmentCommand
-from ..domain.value_objects import SlotMode
+from ..application.command_handlers import BookAppointmentHandler
+from ..application.commands import BookAppointmentCommand
 from ..infra.repositories import SchedulingRepository, SlotNotAvailableError
 from .dto import CreateAppointmentRequest, CreateAppointmentResponse
 
@@ -25,9 +24,9 @@ ALLOWED_ROLES = ["patient", "doctor", "secretary", "clinic_admin"]
 
 
 async def get_session(
-    principal: Principal = Depends(get_current_principal),
+    context: AccessContext = Depends(get_access_context),
 ) -> AsyncSession:
-    async with tenant_session(principal.tenant_id) as session:
+    async with tenant_session(context.tenant_id) as session:
         yield session
 
 
@@ -39,25 +38,25 @@ async def get_session(
 )
 async def create_appointment(
     payload: CreateAppointmentRequest,
-    principal: Principal = Depends(require_any_role(ALLOWED_ROLES)),
+    context: AccessContext = Depends(require_any_role(ALLOWED_ROLES)),
     session: AsyncSession = Depends(get_session),
 ):
     await ensure_authorized(
-        principal,
+        context,
         obj="/commands/scheduling/appointments",
         act="POST",
-        tenant_id=principal.tenant_id,
+        tenant_id=context.tenant_id,
     )
 
     repository = SchedulingRepository(session)
-    handler = CreateAppointmentHandler(repository)
-    command = CreateAppointmentCommand(
-        tenant_id=principal.tenant_id,
+    handler = BookAppointmentHandler(repository)
+    command = BookAppointmentCommand(
+        tenant_id=context.tenant_id,
         slot_id=payload.slot_id,
         patient_id=payload.patient_id,
         reason=payload.reason,
-        mode=payload.mode or SlotMode.ONSITE,
-        requested_by=principal.sub,
+        mode=payload.mode,
+        requested_by=context.sub,
     )
 
     try:
@@ -74,4 +73,3 @@ async def create_appointment(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to book appointment") from exc
 
     return CreateAppointmentResponse.from_domain(appointment)
-

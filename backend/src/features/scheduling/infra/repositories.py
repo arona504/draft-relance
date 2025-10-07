@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Sequence
 
 from sqlalchemy import Select, func, select
@@ -12,9 +13,9 @@ from sqlalchemy.orm import joinedload
 
 from ..domain.entities import Appointment as DomainAppointment
 from ..domain.entities import Slot as DomainSlot
-from ..domain.value_objects import AppointmentStatus, SlotStatus
+from ..domain.value_objects import AppointmentStatus, SlotMode, SlotStatus
 from . import mappers
-from .models import Appointment, Slot
+from .models import AppointmentDB, SlotDB
 
 
 class SlotNotAvailableError(Exception):
@@ -28,31 +29,31 @@ class SchedulingRepository:
     async def list_availabilities(
         self,
         tenant_id: str,
-        starts_at,
-        ends_at,
+        starts_at: datetime,
+        ends_at: datetime,
         practitioner_id: str | None,
-        mode,
+        mode: SlotMode | None,
     ) -> list[DomainSlot]:
         stmt: Select = (
-            select(Slot)
-            .options(joinedload(Slot.calendar))
+            select(SlotDB)
+            .options(joinedload(SlotDB.calendar))
             .where(
-                Slot.tenant_id == tenant_id,
-                Slot.status == SlotStatus.OPEN,
-                Slot.starts_at >= starts_at,
-                Slot.ends_at <= ends_at,
+                SlotDB.tenant_id == tenant_id,
+                SlotDB.status == SlotStatus.OPEN,
+                SlotDB.starts_at >= starts_at,
+                SlotDB.ends_at <= ends_at,
             )
-            .order_by(Slot.starts_at)
+            .order_by(SlotDB.starts_at)
         )
 
         if practitioner_id:
-            stmt = stmt.where(Slot.calendar.has(practitioner_id=practitioner_id))
+            stmt = stmt.where(SlotDB.calendar.has(practitioner_id=practitioner_id))
 
         if mode:
-            stmt = stmt.where(Slot.mode == mode)
+            stmt = stmt.where(SlotDB.mode == mode)
 
         result = await self.session.execute(stmt)
-        slots: Sequence[Slot] = result.scalars().all()
+        slots: Sequence[SlotDB] = result.scalars().all()
         return [mappers.map_slot(slot) for slot in slots]
 
     async def create_appointment(
@@ -61,11 +62,11 @@ class SchedulingRepository:
         slot_id: str,
         patient_id: str,
         reason: str | None,
-        mode,
+        mode: SlotMode | None,
     ) -> DomainAppointment:
-        stmt = select(Slot).where(Slot.id == slot_id, Slot.tenant_id == tenant_id).with_for_update()
+        stmt = select(SlotDB).where(SlotDB.id == slot_id, SlotDB.tenant_id == tenant_id).with_for_update()
         result = await self.session.execute(stmt)
-        slot: Slot | None = result.scalars().first()
+        slot: SlotDB | None = result.scalars().first()
         if slot is None:
             raise NoResultFound("Slot not found")
 
@@ -73,10 +74,10 @@ class SchedulingRepository:
             raise SlotNotAvailableError("Slot not available")
 
         appointment_count = await self.session.scalar(
-            select(func.count(Appointment.id)).where(
-                Appointment.slot_id == slot_id,
-                Appointment.tenant_id == tenant_id,
-                Appointment.status == AppointmentStatus.BOOKED,
+            select(func.count(AppointmentDB.id)).where(
+                AppointmentDB.slot_id == slot_id,
+                AppointmentDB.tenant_id == tenant_id,
+                AppointmentDB.status == AppointmentStatus.BOOKED,
             )
         )
         if appointment_count is None:
@@ -84,7 +85,7 @@ class SchedulingRepository:
         if appointment_count >= slot.capacity:
             raise SlotNotAvailableError("Slot capacity reached")
 
-        appointment_model = Appointment(
+        appointment_model = AppointmentDB(
             id=mappers.generate_id(),
             tenant_id=tenant_id,
             slot_id=slot_id,
@@ -100,4 +101,3 @@ class SchedulingRepository:
         await self.session.flush()
 
         return mappers.map_appointment(appointment_model)
-

@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
+
+from pydantic import BaseModel, Field
 
 from ..domain.value_objects import SlotMode
 
 
-@dataclass(slots=True)
-class FetchAvailabilitiesQuery:
+class FetchAvailabilitiesQuery(BaseModel):
     tenant_id: str
     starts_at: datetime
     ends_at: datetime
-    practitioner_id: Optional[str]
-    mode: Optional[SlotMode]
-
+    practitioner_id: str | None = None
+    mode: SlotMode | None = Field(default=None)

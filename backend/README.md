@@ -54,22 +54,23 @@ pytest
 ```
 
 ## Keycloak Bootstrapping
-After `docker compose up`, visit Keycloak (http://localhost:8081) and:
+With the stack running you can let the helper script provision the realm, clients, mappers, roles, and demo users:
+```bash
+../scripts/keycloak-setup.sh
+```
 
-1. Create realm `keur-doctor`.
-2. Create clients:
-   - `keur-frontend` (Public, PKCE, redirect `http://localhost:3000/*`).
-   - `keur-backend` (Confidential or Public, audience `keur-backend`, direct access grants enabled).
-3. Create client roles on `keur-backend`: `clinic_admin`, `doctor`, `secretary`, `nurse`, `patient`.
-4. Protocol mappers:
-   - User attribute `tenant_id` → Token claim `tenant_id`.
-   - Client roles → Token claim (default `resource_access` mapper works).
-5. Create demo users and assign roles + tenant attribute (UUID string).
-6. For API calls, obtain a token (password grant or Authorization Code) and call:
-   ```bash
-   curl -H "Authorization: Bearer <token>" \
-        'http://localhost:8000/queries/scheduling/availabilities?starts_at=2024-01-01T00:00:00Z&ends_at=2024-01-02T00:00:00Z'
-   ```
+The script creates:
+- Realm `keur-doctor`
+- Clients `keur-frontend` (public PKCE) & `keur-backend` (confidential audience)
+- Protocol mappers exposing `tenant_id` and client roles
+- Roles `clinic_admin`, `doctor`, `secretary`, `nurse`, `patient`
+- Users `clinic_admin@demo`, `doctor1@demo`, `sec1@demo` with password `Passw0rd!` and tenant `tenant-0001`
+
+Manual setup steps mirror the automation above if you prefer the Keycloak UI. Once tokens are issued you can call:
+```bash
+curl -H "Authorization: Bearer <token>" \
+  'http://localhost:8000/queries/scheduling/availabilities?starts_at=2024-01-01T00:00:00Z&ends_at=2024-01-02T00:00:00Z'
+```
 
 ### PostgreSQL Tenant Context
-Every request sets `SET app.tenant_id = '<tenant_uuid>'` before accessing the database. RLS policies enforce that only rows matching the tenant are visible or writable.
+Every request sets `SET app.tenant_id = '<tenant_uuid>'` before accessing the database. RLS policies enforce that only rows matching the tenant are visible or writable, with an additional cross-tenant read policy scaffolded around `patient_access_grants` for future sharing scenarios.

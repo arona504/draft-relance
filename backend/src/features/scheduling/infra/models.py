@@ -4,24 +4,24 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ...core.db import Base
 from ..domain.value_objects import AppointmentStatus, SlotMode, SlotStatus
 
 
-class Calendar(Base):
+class CalendarDB(Base):
     __tablename__ = "calendars"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     practitioner_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
 
-    slots: Mapped[list["Slot"]] = relationship(back_populates="calendar", cascade="all, delete-orphan")
+    slots: Mapped[list["SlotDB"]] = relationship(back_populates="calendar", cascade="all, delete-orphan")
 
 
-class Slot(Base):
+class SlotDB(Base):
     __tablename__ = "slots"
     __table_args__ = (
         UniqueConstraint("calendar_id", "starts_at", name="uq_slot_calendar_starts"),
@@ -36,11 +36,11 @@ class Slot(Base):
     mode: Mapped[SlotMode] = mapped_column(Enum(SlotMode, name="slot_mode"), nullable=False)
     status: Mapped[SlotStatus] = mapped_column(Enum(SlotStatus, name="slot_status"), nullable=False, index=True)
 
-    calendar: Mapped["Calendar"] = relationship(back_populates="slots")
-    appointments: Mapped[list["Appointment"]] = relationship(back_populates="slot", cascade="all, delete-orphan")
+    calendar: Mapped["CalendarDB"] = relationship(back_populates="slots")
+    appointments: Mapped[list["AppointmentDB"]] = relationship(back_populates="slot", cascade="all, delete-orphan")
 
 
-class Appointment(Base):
+class AppointmentDB(Base):
     __tablename__ = "appointments"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
@@ -60,4 +60,19 @@ class Appointment(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    slot: Mapped["Slot"] = relationship(back_populates="appointments")
+    slot: Mapped["SlotDB"] = relationship(back_populates="appointments")
+
+
+class PatientAccessGrantDB(Base):
+    __tablename__ = "patient_access_grants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    resource_tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    granted_tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    patient_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )

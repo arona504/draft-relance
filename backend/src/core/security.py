@@ -8,12 +8,13 @@ from functools import lru_cache
 from typing import Callable, Iterable
 
 import jwt
+from cachetools import TTLCache
 from fastapi import Depends, Header, HTTPException, Request, status
-from fastapi.concurrency import run_in_threadpool
-from jwt import PyJWKClient
 
-from .casbin_enforcer import get_enforcer
+from .casbin_enforcer import authorize
 from .settings import Settings, get_settings
+
+_SIGNING_KEY_CACHE = TTLCache(maxsize=32, ttl=3600)  # 1 hour TTL for JWKS keys
 
 
 class TokenError(HTTPException):
@@ -24,8 +25,8 @@ class TokenError(HTTPException):
 
 
 @dataclass(slots=True)
-class Principal:
-    """Represents the authenticated user."""
+class AccessContext:
+    """Represents the authenticated and authorised subject."""
 
     sub: str
     tenant_id: str
@@ -39,14 +40,27 @@ class Principal:
 
 
 class KeycloakTokenVerifier:
-    """Validate JWT access tokens issued by Keycloak."""
+    """Validate JWT access tokens issued by Keycloak with cached JWKS."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._jwk_client = PyJWKClient(settings.kc_jwks_url)
+        self._jwk_client = jwt.PyJWKClient(settings.kc_jwks_url)
+
+    async def _get_signing_key(self, token: str) -> jwt.PyJWK:
+        headers = jwt.get_unverified_header(token)
+        kid = headers.get("kid")
+        if not kid:
+            raise TokenError("Token missing kid header")
+
+        try:
+            return _SIGNING_KEY_CACHE[kid]
+        except KeyError:
+            signing_key = await asyncio.to_thread(self._jwk_client.get_signing_key_from_jwt, token)
+            _SIGNING_KEY_CACHE[kid] = signing_key
+            return signing_key
 
     async def verify(self, token: str) -> dict:
-        signing_key = await asyncio.to_thread(self._jwk_client.get_signing_key_from_jwt, token)
+        signing_key = await self._get_signing_key(token)
         return jwt.decode(
             token,
             signing_key.key,
@@ -54,6 +68,7 @@ class KeycloakTokenVerifier:
             audience=self.settings.kc_audience,
             issuer=self.settings.kc_issuer,
             leeway=self.settings.jwt_leeway_seconds,
+            options={"require": ["exp", "iat", "nbf"]},
         )
 
 
@@ -64,12 +79,12 @@ def get_token_verifier(settings: Settings | None = None) -> KeycloakTokenVerifie
     return KeycloakTokenVerifier(settings)
 
 
-async def get_current_principal(
+async def get_access_context(
     request: Request,
     authorization: str | None = Header(default=None),
     settings: Settings = Depends(get_settings),
-) -> Principal:
-    """Extract and validate the current principal from the Authorization header."""
+) -> AccessContext:
+    """Extract and validate the current subject from the Authorization header."""
     if not authorization or not authorization.startswith("Bearer "):
         raise TokenError("Missing or invalid Authorization header")
 
@@ -78,6 +93,10 @@ async def get_current_principal(
         claims = await get_token_verifier(settings).verify(token)
     except jwt.PyJWTError as exc:  # pragma: no cover - defensive
         raise TokenError("Invalid access token") from exc
+
+    issuer = claims.get("iss")
+    if issuer != settings.kc_issuer:
+        raise TokenError("Invalid issuer")
 
     tenant_id = claims.get("tenant_id")
     if not tenant_id:
@@ -91,47 +110,52 @@ async def get_current_principal(
 
     preferred_username = claims.get("preferred_username")
 
-    principal = Principal(
-        sub=claims.get("sub"),
+    context = AccessContext(
+        sub=str(claims.get("sub")),
         tenant_id=tenant_id,
         roles=[role.lower() for role in roles],
         raw_token=token,
         preferred_username=preferred_username,
     )
 
-    request.state.principal = principal
-    return principal
+    request.state.access_context = context
+    return context
 
 
-def require_any_role(required_roles: Iterable[str]) -> Callable[[Principal], Principal]:
-    """Return a dependency that ensures the principal has any of the required roles."""
+def require_any_role(required_roles: Iterable[str]) -> Callable[[AccessContext], AccessContext]:
+    """Return a dependency enforcing that the subject owns any of the provided roles."""
 
-    async def dependency(principal: Principal = Depends(get_current_principal)) -> Principal:
-        if not principal.has_any_role(required_roles):
+    async def dependency(context: AccessContext = Depends(get_access_context)) -> AccessContext:
+        if not context.has_any_role(required_roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Requires any of roles: {', '.join(required_roles)}",
             )
-        return principal
+        return context
 
     return dependency
 
 
+def require_role(role: str) -> Callable[[AccessContext], AccessContext]:
+    """Dependency enforcing a single role."""
+
+    return require_any_role([role])
+
+
 async def ensure_authorized(
-    principal: Principal,
+    context: AccessContext,
     obj: str,
     act: str,
     tenant_id: str | None = None,
 ) -> None:
-    """Check authorization via Casbin for the principal."""
-    enforcer = await get_enforcer()
-    domain = tenant_id or principal.tenant_id
+    """Check authorization via Casbin for the subject and fallback roles."""
+    domain = tenant_id or context.tenant_id
 
-    subjects = [principal.sub] + principal.roles
+    if await authorize(context.sub, domain, obj, act):
+        return
 
-    for subject in subjects:
-        allowed = await run_in_threadpool(enforcer.enforce, subject, domain, obj, act)
-        if allowed:
+    for role in context.roles:
+        if await authorize(role, domain, obj, act):
             return
 
     raise HTTPException(

@@ -10,6 +10,13 @@ from .value_objects import AppointmentStatus, SlotMode, SlotStatus
 
 
 @dataclass(slots=True)
+class Calendar:
+    id: str
+    tenant_id: str
+    practitioner_id: str
+
+
+@dataclass(slots=True)
 class Slot:
     id: str
     tenant_id: str
@@ -35,4 +42,3 @@ class Appointment:
     reason: Optional[str] = None
     mode: SlotMode = SlotMode.ONSITE
     created_at: datetime = field(default_factory=datetime.utcnow)
-

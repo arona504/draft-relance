@@ -65,6 +65,19 @@ def upgrade() -> None:
     op.create_index("ix_appointments_patient_id", "appointments", ["patient_id"])
     op.create_index("ix_appointments_status", "appointments", ["status"])
 
+    op.create_table(
+        "patient_access_grants",
+        sa.Column("id", sa.String(length=36), primary_key=True),
+        sa.Column("resource_tenant_id", sa.String(length=36), nullable=False),
+        sa.Column("granted_tenant_id", sa.String(length=36), nullable=False),
+        sa.Column("patient_id", sa.String(length=36), nullable=False),
+        sa.Column("read_only", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+    )
+    op.create_index("ix_pag_resource_tenant", "patient_access_grants", ["resource_tenant_id"])
+    op.create_index("ix_pag_granted_tenant", "patient_access_grants", ["granted_tenant_id"])
+    op.create_index("ix_pag_patient", "patient_access_grants", ["patient_id"])
+
     for table in ("calendars", "slots", "appointments"):
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
@@ -76,11 +89,50 @@ def upgrade() -> None:
             """
         )
 
+    op.execute("ALTER TABLE patient_access_grants ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE patient_access_grants FORCE ROW LEVEL SECURITY")
+    op.execute(
+        """
+        CREATE POLICY tenant_isolation ON patient_access_grants
+        USING (
+            resource_tenant_id = current_setting('app.tenant_id', true)
+            OR granted_tenant_id = current_setting('app.tenant_id', true)
+        )
+        WITH CHECK (resource_tenant_id = current_setting('app.tenant_id', true));
+        """
+    )
+
+    op.execute(
+        """
+        -- Cross-tenant read policy skeleton leveraging patient_access_grants for read-only bundles
+        CREATE POLICY appointment_grant_read ON appointments
+        FOR SELECT
+        USING (
+            EXISTS (
+                SELECT 1
+                FROM patient_access_grants pag
+                WHERE pag.granted_tenant_id = current_setting('app.tenant_id', true)
+                  AND pag.resource_tenant_id = appointments.tenant_id
+                  AND pag.read_only = true
+            )
+        );
+        """
+    )
+
 
 def downgrade() -> None:
+    op.execute("DROP POLICY IF EXISTS appointment_grant_read ON appointments")
+    op.execute("DROP POLICY IF EXISTS tenant_isolation ON patient_access_grants")
+    op.execute("ALTER TABLE patient_access_grants DISABLE ROW LEVEL SECURITY")
+
     for table in ("appointments", "slots", "calendars"):
-        op.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {table}")
-        op.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+        op.execute("DROP POLICY IF EXISTS tenant_isolation ON {table}".format(table=table))
+        op.execute("ALTER TABLE {table} DISABLE ROW LEVEL SECURITY".format(table=table))
+
+    op.drop_index("ix_pag_patient", table_name="patient_access_grants")
+    op.drop_index("ix_pag_granted_tenant", table_name="patient_access_grants")
+    op.drop_index("ix_pag_resource_tenant", table_name="patient_access_grants")
+    op.drop_table("patient_access_grants")
 
     op.drop_index("ix_appointments_status", table_name="appointments")
     op.drop_index("ix_appointments_patient_id", table_name="appointments")
