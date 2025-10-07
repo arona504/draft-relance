@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-feature-settings: "liga" 1, "kern" 1;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

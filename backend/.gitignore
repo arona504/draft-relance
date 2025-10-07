@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pdm-build/
+.venv/
+env/
+.env
+.env.*
+alembic.ini.bak
+.pytest_cache/
+dist/
+build/
+htmlcov/
+.coverage

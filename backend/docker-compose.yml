@@ -1,0 +1,53 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: keurnet
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command:
+      - start-dev
+      - --http-port=8081
+      - --hostname-strict=false
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8081:8081"
+    depends_on:
+      - db
+
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/keurnet
+      CASBIN_DB_URL: postgresql+asyncpg://postgres:postgres@db:5432/keurnet
+      KC_URL: http://keycloak:8081
+      KC_REALM: keur-doctor
+      KC_AUDIENCE: keur-backend
+      KC_CLIENT_ID: keur-backend
+      JWT_LEEWAY_SECONDS: 30
+      SERVICE_NAME: keur-doctor-backend
+      STRUCTLOG_JSON: "true"
+      ALLOW_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - keycloak
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+
+volumes:
+  postgres-data:
+*** End Patch

@@ -1,0 +1,13 @@
+p, patient, *, /queries/scheduling/availabilities, GET, allow
+p, patient, *, /commands/scheduling/appointments, POST, allow
+p, doctor, *, /commands/scheduling/appointments, POST, allow
+p, secretary, *, /commands/scheduling/appointments, POST, allow
+p, doctor, *, /commands/dictation/notes, POST, allow
+p, secretary, *, /commands/dictation/notes, POST, allow
+p, clinic_admin, *, /commands/dictation/.*, (GET|POST|PATCH|DELETE), allow
+p, clinic_admin, *, /queries/scheduling/.*, (GET|POST|PATCH|DELETE), allow
+p, clinic_admin, *, /commands/scheduling/.*, (GET|POST|PATCH|DELETE), allow
+g, patient, patient, *
+g, doctor, doctor, *
+g, secretary, secretary, *
+g, clinic_admin, clinic_admin, *
