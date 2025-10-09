@@ -1,10 +1,9 @@
 """Query endpoints for scheduling."""
 
-from __future__ import annotations
-
 from fastapi import APIRouter, Depends, Request
+from typing import Annotated
 
-from src.core.db import tenant_session
+from src.core.db import get_session_factory, tenant_session
 from src.core.http import limiter
 from src.core.security import AccessContext, ensure_authorized, get_access_context
 from src.core.settings import get_settings
@@ -18,13 +17,6 @@ router = APIRouter(prefix="/queries/scheduling", tags=["scheduling:queries"])
 RATE_LIMIT = f"{get_settings().rate_limit_queries_per_min}/minute"
 
 
-async def get_repository(
-    context: AccessContext = Depends(get_access_context),
-) -> SchedulingRepository:
-    async with tenant_session(context.tenant_id) as session:
-        yield SchedulingRepository(session)
-
-
 @router.get(
     "/availabilities",
     response_model=list[AvailabilityDTO],
@@ -33,9 +25,8 @@ async def get_repository(
 @limiter.limit(RATE_LIMIT)
 async def list_availabilities(
     request: Request,
-    params: AvailabilityQueryParams = Depends(AvailabilityQueryParams),
+    params: Annotated[AvailabilityQueryParams, Depends()],
     context: AccessContext = Depends(get_access_context),
-    repository: SchedulingRepository = Depends(get_repository),
 ):
     await ensure_authorized(
         context,
@@ -44,13 +35,30 @@ async def list_availabilities(
         tenant_id=context.tenant_id,
     )
 
-    handler = FetchAvailabilitiesHandler(repository)
-    query = FetchAvailabilitiesQuery(
-        tenant_id=context.tenant_id,
-        starts_at=params.starts_at,
-        ends_at=params.ends_at,
-        practitioner_id=params.practitioner_id,
-        mode=params.mode,
-    )
-    slots = await handler.handle(query)
-    return [AvailabilityDTO.from_domain(slot) for slot in slots]
+    if context.tenant_id:
+        async with tenant_session(context.tenant_id) as session:
+            repository = SchedulingRepository(session)
+            handler = FetchAvailabilitiesHandler(repository)
+            query = FetchAvailabilitiesQuery(
+                tenant_id=context.tenant_id,
+                starts_at=params.starts_at,
+                ends_at=params.ends_at,
+                practitioner_id=params.practitioner_id,
+                mode=params.mode,
+            )
+            slots = await handler.handle(query)
+            return [AvailabilityDTO.from_domain(slot) for slot in slots]
+
+    session_factory = get_session_factory()
+    async with session_factory() as session:
+        repository = SchedulingRepository(session)
+        handler = FetchAvailabilitiesHandler(repository)
+        query = FetchAvailabilitiesQuery(
+            tenant_id=context.tenant_id or "*",
+            starts_at=params.starts_at,
+            ends_at=params.ends_at,
+            practitioner_id=params.practitioner_id,
+            mode=params.mode,
+        )
+        slots = await handler.handle(query)
+        return [AvailabilityDTO.from_domain(slot) for slot in slots]

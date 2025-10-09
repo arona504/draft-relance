@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     kc_realm: str = Field(..., alias="KC_REALM")
     kc_audience: str = Field(..., alias="KC_AUDIENCE")
     kc_client_id: str = Field(..., alias="KC_CLIENT_ID")
+    kc_admin_client_id: str | None = Field(default=None, alias="KC_ADMIN_CLIENT_ID")
+    kc_admin_client_secret: str | None = Field(default=None, alias="KC_ADMIN_CLIENT_SECRET")
     jwt_leeway_seconds: int = Field(30, alias="JWT_LEEWAY_SECONDS")
     service_name: str = Field("keur-doctor-backend", alias="SERVICE_NAME")
     allow_origins: list[str] | str = Field(default="*", alias="ALLOW_ORIGINS")
@@ -42,6 +44,12 @@ class Settings(BaseSettings):
     casbin_model_path: str = Field("casbin/model.conf", alias="CASBIN_MODEL_PATH")
     casbin_policy_path: str = Field("casbin/seed_policy.csv", alias="CASBIN_POLICY_PATH")
     metrics_namespace: str = Field("keur_doctor", alias="METRICS_NAMESPACE")
+    pro_invite_secret: str = Field(..., alias="PRO_INVITE_SECRET")
+    pro_invite_audience: str = Field("keur-doctor/pro-invite", alias="PRO_INVITE_AUDIENCE")
+    pro_invite_ttl_minutes: int = Field(4320, alias="PRO_INVITE_TTL_MINUTES")
+    pro_onboarding_url: str = Field(
+        "http://localhost:3000/pro/onboarding", alias="PRO_ONBOARDING_URL"
+    )
 
     @field_validator("allow_origins", mode="before")
     @classmethod
@@ -49,7 +57,8 @@ class Settings(BaseSettings):
         if value in (None, "", "*"):
             return ["*"]
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            origins = [origin.strip() for origin in value.split(",") if origin.strip()]
+            return origins or ["*"]
         if isinstance(value, list):
             return value
         raise ValueError("ALLOW_ORIGINS must be a comma-separated string or list")

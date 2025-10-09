@@ -15,7 +15,7 @@ from ..domain.entities import Appointment as DomainAppointment
 from ..domain.entities import Slot as DomainSlot
 from ..domain.value_objects import AppointmentStatus, SlotMode, SlotStatus
 from . import mappers
-from .models import AppointmentDB, SlotDB
+from .models import AppointmentDB, SlotDB, PatientTenantGrantDB
 
 
 class SlotNotAvailableError(Exception):
@@ -100,4 +100,22 @@ class SchedulingRepository:
         self.session.add(appointment_model)
         await self.session.flush()
 
+        await self._ensure_patient_grant(patient_id=patient_id, tenant_id=tenant_id)
         return mappers.map_appointment(appointment_model)
+
+    async def _ensure_patient_grant(self, patient_id: str, tenant_id: str) -> None:
+        exists = await self.session.scalar(
+            select(PatientTenantGrantDB.patient_user_id).where(
+                PatientTenantGrantDB.patient_user_id == patient_id,
+                PatientTenantGrantDB.tenant_id == tenant_id,
+            )
+        )
+        if exists:
+            return
+
+        grant = PatientTenantGrantDB(
+            patient_user_id=patient_id,
+            tenant_id=tenant_id,
+            scope="appointments",
+        )
+        self.session.add(grant)

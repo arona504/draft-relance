@@ -16,9 +16,9 @@ from .settings import Settings
 
 
 def _limiter_key(request: Request) -> str:
-    principal = getattr(request.state, "principal", None)
-    if principal and getattr(principal, "sub", None):
-        return principal.sub
+    context = getattr(request.state, "access_context", None)
+    if context and getattr(context, "sub", None):
+        return context.sub
     return get_remote_address(request)
 
 

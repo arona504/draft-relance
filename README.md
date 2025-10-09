@@ -40,22 +40,23 @@ Run the automated helper (requires the stack to be up):
 ```
 
 Or perform the steps manually:
-1. Create realm **`keur-doctor`**.
-2. Clients:
-   - `keur-frontend` (Public, PKCE, redirect `http://localhost:3000/*`).
-   - `keur-backend` (Confidential with audience `keur-backend`, direct access grants enabled).
-3. Protocol mappers on `keur-backend`:
-   - User attribute `tenant_id` → token claim `tenant_id`.
-   - Client roles → token claim `resource_access.keur-backend.roles`.
-4. Roles on `keur-backend`: `clinic_admin`, `doctor`, `secretary`, `nurse`, `patient`.
-5. Demo users with tenant attribute `tenant-0001`: `clinic_admin@demo`, `doctor1@demo`, `sec1@demo` (password `Passw0rd!`).
-6. Retrieve tokens via the authorization code flow against Keycloak (see backend README and script output).
+1. Create realm **`keur-doctor`** et activez l’option *Registration* pour les patients.
+2. Clients :
+   - `keur-patient-frontend` (Public, PKCE) – redirect `http://localhost:3000/api/auth/callback/keycloak-patient` + `http://localhost:3000/*`.
+   - `keur-pro-frontend` (Public, PKCE) – redirect `http://localhost:3000/api/auth/callback/keycloak-pro` + `http://localhost:3000/*`.
+   - `keur-backend` (Confidential, service accounts) – audience de l’API.
+3. Protocol mappers sur `keur-backend` :
+   - Attribut utilisateur `tenant_id` → claim `tenant_id`.
+   - Rôles client → claim `resource_access.keur-backend.roles`.
+4. Rôles disponibles : `patient`, `doctor`, `nurse`, `secretary`, `clinic_admin`. Ajoutez `patient` au rôle par défaut `default-roles-keur-doctor`.
+5. Créez les comptes de démonstration `clinic_admin@demo`, `doctor1@demo`, `sec1@demo` (mot de passe `Passw0rd!`) et attribuez-les au tenant de test.
+6. Activez un flow MFA renforcé pour le client professionnel et conservez un flow léger pour le client patient.
 
 ## Casbin policies
 Policies live in PostgreSQL via the SQLAlchemy adapter. On first boot the service seeds `backend/casbin/seed_policy.csv`, granting:
-- `patient`: read availabilities & book appointments
-- `doctor` / `secretary`: book appointments
-- `clinic_admin`: full scheduling access
+- `patient` : consultation & réservation de créneaux
+- `doctor` / `nurse` / `secretary` : gestion des commandes scheduling
+- `clinic_admin` : actions supplémentaires (invitations professionnelles, endpoints d’administration)
 
 ## Observability & security
 - JSON structured logs via structlog
@@ -85,4 +86,4 @@ cd ../frontend
 npm install
 npm run dev
 ```
-Visit http://localhost:3000, authenticate with a demo user, book a slot via the dashboard form, and inspect backend logs/metrics (`curl http://localhost:8000/healthz`, `curl http://localhost:8000/metrics`).
+Visitez http://localhost:3000, choisissez l’espace **Patient** ou **Professionnel**, connectez-vous avec un compte de démonstration ou via une invitation, puis simulez une réservation de créneau. Les métriques restent accessibles via `curl http://localhost:8000/healthz` et `curl http://localhost:8000/metrics`.

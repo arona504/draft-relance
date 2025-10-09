@@ -2,16 +2,18 @@ import NextAuth, { type DefaultSession } from "next-auth";
 
 declare module "next-auth" {
   interface Session {
-    accessToken?: string;
+    provider?: string;
     user?: DefaultSession["user"] & {
       roles: string[];
       tenantId?: string;
+      type?: "patient" | "pro";
     };
   }
 
   interface User {
     roles?: string[];
     tenantId?: string;
+    type?: "patient" | "pro";
   }
 }
 
@@ -24,5 +26,7 @@ declare module "next-auth/jwt" {
     tenantId?: string;
     username?: string;
     error?: string;
+    provider?: string;
+    email?: string;
   }
 }

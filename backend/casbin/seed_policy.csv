@@ -7,6 +7,7 @@ p, secretary, *, /commands/dictation/notes, POST, allow
 p, clinic_admin, *, /commands/dictation/.*, (GET|POST|PATCH|DELETE), allow
 p, clinic_admin, *, /queries/scheduling/.*, (GET|POST|PATCH|DELETE), allow
 p, clinic_admin, *, /commands/scheduling/.*, (GET|POST|PATCH|DELETE), allow
+p, clinic_admin, *, /commands/onboarding/pro-invitations, POST, allow
 g, patient, patient, *
 g, doctor, doctor, *
 g, secretary, secretary, *

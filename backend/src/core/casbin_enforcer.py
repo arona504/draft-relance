@@ -29,8 +29,8 @@ def _seed_policies(enforcer: casbin.Enforcer, policy_path: Path) -> None:
                 enforcer.add_policy(*policy_parts)
             elif kind == "g":
                 enforcer.add_grouping_policy(*policy_parts)
-
     enforcer.save_policy()
+    enforcer.load_policy()
 
 
 async def _initialise_enforcer(settings: Settings) -> casbin.Enforcer:
@@ -42,8 +42,8 @@ async def _initialise_enforcer(settings: Settings) -> casbin.Enforcer:
     enforcer = casbin.Enforcer(str(model_path), adapter, enable_log=False)
     enforcer.enable_auto_save(True)
 
-    policy_path = settings.resolve_path(settings.casbin_policy_path)
     enforcer.load_policy()
+    policy_path = settings.resolve_path(settings.casbin_policy_path)
     if policy_path.exists() and not enforcer.get_policy() and not enforcer.get_grouping_policy():
         _seed_policies(enforcer, policy_path)
 

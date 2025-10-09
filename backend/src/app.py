@@ -13,8 +13,9 @@ from .core.http import setup_http
 from .core.logging import configure_logging
 from .core.observability import setup_observability
 from .core.settings import Settings, get_settings
-from .features.scheduling.interfaces.router_commands import router as scheduling_commands_router
 from .features.dictation.interfaces.router import router as dictation_router
+from .features.onboarding.interfaces.router import router as onboarding_router
+from .features.scheduling.interfaces.router_commands import router as scheduling_commands_router
 from .features.scheduling.interfaces.router_queries import router as scheduling_queries_router
 
 
@@ -46,6 +47,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(scheduling_queries_router)
     app.include_router(scheduling_commands_router)
+    app.include_router(onboarding_router)
     app.include_router(dictation_router)
 
     return app

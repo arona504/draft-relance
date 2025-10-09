@@ -44,6 +44,7 @@ class CreateAppointmentRequest(BaseModel):
     patient_id: str
     reason: Optional[str] = None
     mode: Optional[SlotMode] = None
+    tenant_id: Optional[str] = None
 
 
 class CreateAppointmentResponse(BaseModel):
@@ -53,4 +54,3 @@ class CreateAppointmentResponse(BaseModel):
     @classmethod
     def from_domain(cls, appointment: DomainAppointment) -> "CreateAppointmentResponse":
         return cls(appointment_id=appointment.id, status=appointment.status)
-

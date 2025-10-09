@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR=$(cd -- "$(dirname "$0")" && pwd)
+BACKEND_DIR="${SCRIPT_DIR}/../backend"
 COMPOSE_CMD=${COMPOSE_CMD:-docker compose}
 KEYCLOAK_SERVICE=${KEYCLOAK_SERVICE:-keycloak}
 KEYCLOAK_SERVER=${KEYCLOAK_SERVER:-http://localhost:8081}
@@ -10,8 +12,12 @@ ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-admin}
 TENANT_UUID=${TENANT_UUID:-tenant-0001}
 FRONTEND_REDIRECT=${FRONTEND_REDIRECT:-http://localhost:3000/*}
 
+compose() {
+  (cd "$BACKEND_DIR" && ${COMPOSE_CMD} "$@")
+}
+
 kc() {
-  ${COMPOSE_CMD} exec -T "${KEYCLOAK_SERVICE}" /opt/keycloak/bin/kcadm.sh "$@"
+  compose exec -T "${KEYCLOAK_SERVICE}" /opt/keycloak/bin/kcadm.sh "$@"
 }
 
 printf '\n===> Configuring Keycloak realm %s\n' "${REALM}"
@@ -24,15 +30,34 @@ kc config credentials \
 
 kc create realms -s realm="${REALM}" -s enabled=true || true
 
+kc update realms/${REALM} \
+  -s registrationAllowed=true \
+  -s resetPasswordAllowed=true \
+  -s rememberMe=true || true
+
+FRONTEND_BASE=${FRONTEND_BASE:-http://localhost:3000}
+PATIENT_CLIENT_ID=keur-patient-frontend
+PRO_CLIENT_ID=keur-pro-frontend
+BACKEND_CLIENT_ID=keur-backend
+
 kc create clients -r "${REALM}" \
-  -s clientId=keur-frontend \
+  -s clientId=${PATIENT_CLIENT_ID} \
   -s protocol=openid-connect \
   -s publicClient=true \
   -s standardFlowEnabled=true \
-  -s directAccessGrantsEnabled=false || true
+  -s directAccessGrantsEnabled=false \
+  -s serviceAccountsEnabled=false || true
 
 kc create clients -r "${REALM}" \
-  -s clientId=keur-backend \
+  -s clientId=${PRO_CLIENT_ID} \
+  -s protocol=openid-connect \
+  -s publicClient=true \
+  -s standardFlowEnabled=true \
+  -s directAccessGrantsEnabled=false \
+  -s serviceAccountsEnabled=false || true
+
+kc create clients -r "${REALM}" \
+  -s clientId=${BACKEND_CLIENT_ID} \
   -s protocol=openid-connect \
   -s publicClient=false \
   -s secret=backend-secret \
@@ -45,13 +70,19 @@ get_client_id() {
   kc get clients -r "${REALM}" -q clientId="${client_id}" | grep '"id"' | head -n1 | cut -d '"' -f4
 }
 
-FRONTEND_ID=$(get_client_id keur-frontend)
-BACKEND_ID=$(get_client_id keur-backend)
+PATIENT_ID=$(get_client_id ${PATIENT_CLIENT_ID})
+PRO_ID=$(get_client_id ${PRO_CLIENT_ID})
+BACKEND_ID=$(get_client_id ${BACKEND_CLIENT_ID})
 
-kc update "clients/${FRONTEND_ID}" -r "${REALM}" \
+kc update "clients/${PATIENT_ID}" -r "${REALM}" \
   -s 'attributes."pkce.code.challenge.method"=S256' \
-  -s 'redirectUris=["'"${FRONTEND_REDIRECT}"'"]' \
-  -s 'webOrigins=["http://localhost:3000"]'
+  -s 'redirectUris=["'"${FRONTEND_BASE}/api/auth/callback/keycloak-patient"'", "'"${FRONTEND_BASE}/*"'"]' \
+  -s 'webOrigins=["'"${FRONTEND_BASE}"'"]'
+
+kc update "clients/${PRO_ID}" -r "${REALM}" \
+  -s 'attributes."pkce.code.challenge.method"=S256' \
+  -s 'redirectUris=["'"${FRONTEND_BASE}/api/auth/callback/keycloak-pro"'", "'"${FRONTEND_BASE}/*"'"]' \
+  -s 'webOrigins=["'"${FRONTEND_BASE}"'"]'
 
 kc update "clients/${BACKEND_ID}" -r "${REALM}" \
   -s publicClient=false \
@@ -60,7 +91,7 @@ kc update "clients/${BACKEND_ID}" -r "${REALM}" \
   -s directAccessGrantsEnabled=true \
   -s 'attributes."use.refresh.tokens"=true'
 
-# Protocol mapper: user attribute tenant_id => claim tenant_id
+# Protocol mappers backend
 kc create "clients/${BACKEND_ID}/protocol-mappers/models" -r "${REALM}" \
   -s name="tenant-id" \
   -s protocol="openid-connect" \
@@ -72,51 +103,53 @@ kc create "clients/${BACKEND_ID}/protocol-mappers/models" -r "${REALM}" \
   -s 'config."access.token.claim"=true' \
   -s 'config."userinfo.token.claim"=true' || true
 
-# Protocol mapper: expose client roles under resource_access.keur-backend.roles
 kc create "clients/${BACKEND_ID}/protocol-mappers/models" -r "${REALM}" \
   -s name="backend-client-roles" \
   -s protocol="openid-connect" \
   -s protocolMapper="oidc-usermodel-client-role-mapper" \
-  -s 'config."clientId"=keur-backend' \
-  -s 'config."claim.name"=resource_access.keur-backend.roles' \
+  -s 'config."clientId"='"${BACKEND_CLIENT_ID}" \
+  -s 'config."claim.name"=resource_access.'"${BACKEND_CLIENT_ID}"'.roles' \
   -s 'config."jsonType.label"=String' \
   -s 'config."id.token.claim"=true' \
   -s 'config."access.token.claim"=true' \
   -s 'config."userinfo.token.claim"=true' || true
 
-for role in clinic_admin doctor secretary nurse patient; do
+for role in clinic_admin doctor nurse secretary patient; do
   kc create "clients/${BACKEND_ID}/roles" -r "${REALM}" -s name="$role" || true
 done
 
-create_user() {
+# Ajout du rôle patient aux rôles par défaut
+kc add-roles -r "${REALM}" --rname "default-roles-${REALM}" --cclientid ${BACKEND_CLIENT_ID} --rolename patient || true
+
+# Comptes de démonstration professionnels
+create_pro_user() {
   local username="$1"
-  local email="$1"
   local role="$2"
-  kc create users -r "${REALM}" -s username="${username}" -s enabled=true -s email="${email}" || true
+  kc create users -r "${REALM}" -s username="${username}" -s enabled=true -s email="${username}" || true
   local user_id
   user_id=$(kc get users -r "${REALM}" -q username="${username}" | grep '"id"' | head -n1 | cut -d '"' -f4)
   kc update "users/${user_id}" -r "${REALM}" -s 'attributes.tenant_id=["'"${TENANT_UUID}"'"]'
   kc set-password -r "${REALM}" --userid "${user_id}" --new-password "Passw0rd!" --temporary=false
-  kc add-roles -r "${REALM}" --uusername "${username}" --cclientid keur-backend --rolename "${role}"
+  kc add-roles -r "${REALM}" --uusername "${username}" --cclientid ${BACKEND_CLIENT_ID} --rolename "${role}" || true
 }
 
-create_user "clinic_admin@demo" "clinic_admin"
-create_user "doctor1@demo" "doctor"
-create_user "sec1@demo" "secretary"
+create_pro_user "clinic_admin@demo" "clinic_admin"
+create_pro_user "doctor1@demo" "doctor"
+create_pro_user "sec1@demo" "secretary"
 
 cat <<INFO
 
 Keycloak realm '${REALM}' ready.
-Demo credentials use password 'Passw0rd!'.
 
-To obtain a token (Authorization Code flow):
-1. Open browser: ${KEYCLOAK_SERVER}/realms/${REALM}/protocol/openid-connect/auth?client_id=keur-frontend&response_type=code&redirect_uri=http://localhost:3000/api/auth/callback/keycloak&scope=openid%20profile%20email%20offline_access
-2. Authenticate with a demo user.
-3. Capture the redirected code and exchange it:
-   curl -X POST ${KEYCLOAK_SERVER}/realms/${REALM}/protocol/openid-connect/token \
-     -H 'Content-Type: application/x-www-form-urlencoded' \
-     -d 'grant_type=authorization_code' \
-     -d 'client_id=keur-frontend' \
-     -d 'code=YOUR_CODE' \
-     -d 'redirect_uri=http://localhost:3000/api/auth/callback/keycloak'
+Clients créés :
+  - ${PATIENT_CLIENT_ID} (public, auto-inscription patient via ${FRONTEND_BASE}/patient)
+  - ${PRO_CLIENT_ID} (public, invitation uniquement via ${FRONTEND_BASE}/pro)
+  - ${BACKEND_CLIENT_ID} (audience API)
+
+Le rôle "patient" est attribué automatiquement à toute nouvelle inscription.
+MFA et politiques renforcées doivent être configurées côté client professionnel depuis l'Admin Console.
+
+Identifiants de démonstration (mot de passe 'Passw0rd!') :
+  clinic_admin@demo, doctor1@demo, sec1@demo
+
 INFO

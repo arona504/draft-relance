@@ -6,12 +6,12 @@ export default async function AdminPage() {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
-    redirect("/");
+    redirect("/pro");
   }
 
   const roles = session.user.roles ?? [];
   if (!roles.includes("clinic_admin")) {
-    redirect("/app");
+    redirect("/app/pro");
   }
 
   return (
